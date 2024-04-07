@@ -1,0 +1,14 @@
+{
+  "name": "codecrafters-http-server-javascript",
+  "version": "1.0.0",
+  "description": "[![progress-banner](https://backend.codecrafters.io/progress/http-server/93aa4b17-35f6-4d55-ab64-a1fcc0af7e72)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon app/main.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
