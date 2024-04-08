@@ -1,28 +1,33 @@
+const cluster = require("cluster");
+const numCPUs = require("os").cpus().length;
 const net = require("net");
 const fs = require("fs");
-const path = require("path");
 
 console.log("Logs from your program will appear here!");
 
 let directory = ".";
+const logFileName = "server.log";
 const directoryIndex = process.argv.indexOf("--directory");
-if(directoryIndex !== -1){
+if (directoryIndex !== -1) {
     directory = process.argv[directoryIndex + 1];
-} 
+}
 
 const handleConnection = (socket) => {
     socket.on("data", (data) => {
         const [request, host, agent] = data.toString().split("\r\n");
         const [method, path, version] = request.split(" ");
-
+        logToFile(`[${new Date().toISOString()}] Request: ${method} ${path} ${version}`);
         switch (method) {
-            case "GET": handleGetRequest(socket, path, agent);
-                        break;
-            case "POST": handlePostRequest(socket, path, data);
-                         break;
-            default: sendResponse(socket, "HTTP/1.1 405 Method Not Allowed\r\n\r\n");
-                     socket.end();
-                     break;
+            case "GET":
+                handleGetRequest(socket, path, agent);
+                break;
+            case "POST":
+                handlePostRequest(socket, path, data);
+                break;
+            default:
+                sendResponse(socket, "HTTP/1.1 405 Method Not Allowed\r\n\r\n");
+                socket.end();
+                break;
         }
     });
 };
@@ -38,7 +43,6 @@ const handleGetRequest = (socket, path, agent) => {
         sendResponse(socket, `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${userAgent.length}\r\n\r\n${userAgent}`);
     } else if (path.startsWith("/files/")) {
         const filePath = directory + "/" + path.slice(7);
-        console.log(filePath);
         if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
             sendResponse(socket, "HTTP/1.1 404 Not Found\r\n\r\n");
             socket.end();
@@ -68,18 +72,51 @@ const handlePostRequest = (socket, path, requestData) => {
 const sendResponse = (socket, response) => {
     socket.write(response);
     console.log("Sent response:", response);
+    logToFile(`[${new Date().toISOString()}] Response: ${response}`);
 };
 
-const server = net.createServer((socket) => {
-    handleConnection(socket);
-});
-
-server.listen(4221, "localhost");
-
-process.on("SIGINT", () => {
-    console.log("Server shutting down...");
-    server.close(() => {
-        console.log("Server closed.");
-        process.exit(0);
+const logToFile = (message) => {
+    fs.appendFile(logFileName, message + "\n", (error) => {
+        if (error) {
+            console.error("Error writing to log file:", error);
+        }
     });
-});
+};
+
+const startServer = () => {
+    const server = net.createServer((socket) => {
+        handleConnection(socket);
+    });
+
+    server.on("error", (err) => {
+        console.error("Server error:", err.message);
+    });
+
+    server.listen(4221, "localhost", () => {
+        console.log(`Server running on port 4221`);
+    });
+
+    process.on("SIGINT", () => {
+        console.log("Server shutting down...");
+        server.close(() => {
+            console.log("Server closed.");
+            process.exit(0);
+        });
+    });
+};
+
+if (cluster.isMaster) {
+    console.log(`Master ${process.pid} is running`);
+    cluster.on("exit", (worker, code, signal) => {
+        console.log(`Worker ${worker.process.pid} died`);
+        cluster.fork(); // Restart the worker that died
+    });
+
+    // Fork workers based on CPU cores
+    for (let i = 0; i < numCPUs; i++) {
+        cluster.fork();
+    }
+} else {
+    console.log(`Worker ${process.pid} started`);
+    startServer();
+}
